@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const db = require('../db/init');
+const { pool } = require('../db/init');
 const { requireAuth, JWT_SECRET } = require('../middleware/auth');
 require('dotenv').config();
 
@@ -17,71 +17,90 @@ function signToken(user) {
 }
 
 // --- POST /api/auth/register ---
-// Δημιουργία νέου χρήστη: username, email, password
-router.post('/register', (req, res) => {
-  const { username, email, password, role } = req.body;
+router.post('/register', async (req, res) => {
+  try {
+    const { username, email, password } = req.body;
 
-  if (!username || !email || !password) {
-    return res.status(400).json({ error: 'Χρειάζονται username, email και password.' });
+    if (!username || !email || !password) {
+      return res.status(400).json({ error: 'Χρειάζονται username, email και password.' });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Ο κωδικός πρέπει να έχει τουλάχιστον 6 χαρακτήρες.' });
+    }
+
+    const existing = await pool.query(
+      'SELECT id FROM users WHERE username = $1 OR email = $2',
+      [username, email]
+    );
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ error: 'Υπάρχει ήδη χρήστης με αυτό το username ή email.' });
+    }
+
+    const password_hash = bcrypt.hashSync(password, 10);
+
+    // Ο πρώτος χρήστης που δημιουργείται γίνεται αυτόματα admin
+    const countResult = await pool.query('SELECT COUNT(*) as count FROM users');
+    const userCount = parseInt(countResult.rows[0].count, 10);
+    const role = userCount === 0 ? 'admin' : 'member';
+
+    const insertResult = await pool.query(
+      `INSERT INTO users (username, email, password_hash, role)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, username, email, role, created_at`,
+      [username, email, password_hash, role]
+    );
+
+    const user = insertResult.rows[0];
+    const token = signToken(user);
+    res.status(201).json({ user, token });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Κάτι πήγε στραβά κατά την εγγραφή.' });
   }
-  if (password.length < 6) {
-    return res.status(400).json({ error: 'Ο κωδικός πρέπει να έχει τουλάχιστον 6 χαρακτήρες.' });
-  }
-
-  const existing = db.prepare('SELECT id FROM users WHERE username = ? OR email = ?')
-    .get(username, email);
-  if (existing) {
-    return res.status(409).json({ error: 'Υπάρχει ήδη χρήστης με αυτό το username ή email.' });
-  }
-
-  const password_hash = bcrypt.hashSync(password, 10);
-
-  // Ο πρώτος χρήστης που δημιουργείται γίνεται αυτόματα admin
-  const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
-  const finalRole = userCount === 0 ? 'admin' : (role === 'admin' ? 'member' : (role || 'member'));
-  // Σημείωση: δεν επιτρέπουμε στον client να ορίσει τον εαυτό του admin εκτός του πρώτου χρήστη
-
-  const stmt = db.prepare(
-    'INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, ?)'
-  );
-  const info = stmt.run(username, email, password_hash, finalRole);
-
-  const user = db.prepare('SELECT id, username, email, role, created_at FROM users WHERE id = ?')
-    .get(info.lastInsertRowid);
-
-  const token = signToken(user);
-  res.status(201).json({ user, token });
 });
 
 // --- POST /api/auth/login ---
-router.post('/login', (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Χρειάζονται email και password.' });
-  }
+router.post('/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Χρειάζονται email και password.' });
+    }
 
-  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-  if (!user) {
-    return res.status(401).json({ error: 'Λάθος email ή κωδικός.' });
-  }
+    const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+    const user = result.rows[0];
+    if (!user) {
+      return res.status(401).json({ error: 'Λάθος email ή κωδικός.' });
+    }
 
-  const valid = bcrypt.compareSync(password, user.password_hash);
-  if (!valid) {
-    return res.status(401).json({ error: 'Λάθος email ή κωδικός.' });
-  }
+    const valid = bcrypt.compareSync(password, user.password_hash);
+    if (!valid) {
+      return res.status(401).json({ error: 'Λάθος email ή κωδικός.' });
+    }
 
-  const token = signToken(user);
-  const { password_hash, ...safeUser } = user;
-  res.json({ user: safeUser, token });
+    const token = signToken(user);
+    const { password_hash, ...safeUser } = user;
+    res.json({ user: safeUser, token });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Κάτι πήγε στραβά κατά τη σύνδεση.' });
+  }
 });
 
 // --- GET /api/auth/me ---
-// Επιστρέφει τα στοιχεία του συνδεδεμένου χρήστη
-router.get('/me', requireAuth, (req, res) => {
-  const user = db.prepare('SELECT id, username, email, role, created_at FROM users WHERE id = ?')
-    .get(req.user.id);
-  if (!user) return res.status(404).json({ error: 'Ο χρήστης δεν βρέθηκε.' });
-  res.json({ user });
+router.get('/me', requireAuth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT id, username, email, role, created_at FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const user = result.rows[0];
+    if (!user) return res.status(404).json({ error: 'Ο χρήστης δεν βρέθηκε.' });
+    res.json({ user });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Κάτι πήγε στραβά.' });
+  }
 });
 
 module.exports = router;

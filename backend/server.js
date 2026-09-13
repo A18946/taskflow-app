@@ -6,7 +6,7 @@ const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 const path = require('path');
 
-const db = require('./db/init');
+const { pool, initDb } = require('./db/init');
 const { JWT_SECRET } = require('./middleware/auth');
 
 const authRoutes = require('./routes/auth');
@@ -53,22 +53,29 @@ io.use((socket, next) => {
 io.on('connection', (socket) => {
   console.log(`Συνδέθηκε: ${socket.user.username}`);
 
-  socket.on('chat:send', (data) => {
+  socket.on('chat:send', async (data) => {
     const content = (data?.content || '').trim();
     if (!content) return;
 
-    const stmt = db.prepare('INSERT INTO messages (user_id, content) VALUES (?, ?)');
-    const info = stmt.run(socket.user.id, content);
+    try {
+      const result = await pool.query(
+        `INSERT INTO messages (user_id, content) VALUES ($1, $2)
+         RETURNING id, created_at`,
+        [socket.user.id, content]
+      );
 
-    const message = {
-      id: info.lastInsertRowid,
-      content,
-      created_at: new Date().toISOString(),
-      user_id: socket.user.id,
-      username: socket.user.username,
-    };
+      const message = {
+        id: result.rows[0].id,
+        content,
+        created_at: result.rows[0].created_at,
+        user_id: socket.user.id,
+        username: socket.user.username,
+      };
 
-    io.emit('chat:message', message); // broadcast σε όλους (και στον αποστολέα)
+      io.emit('chat:message', message); // broadcast σε όλους (και στον αποστολέα)
+    } catch (err) {
+      console.error('Σφάλμα αποθήκευσης μηνύματος:', err);
+    }
   });
 
   socket.on('disconnect', () => {
@@ -77,6 +84,14 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 4000;
-server.listen(PORT, () => {
-  console.log(`Server up: http://localhost:${PORT}`);
-});
+
+initDb()
+  .then(() => {
+    server.listen(PORT, () => {
+      console.log(`Server up: http://localhost:${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error('Αποτυχία σύνδεσης/αρχικοποίησης βάσης δεδομένων:', err);
+    process.exit(1);
+  });

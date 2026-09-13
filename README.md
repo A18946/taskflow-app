@@ -4,7 +4,7 @@
 - **Login / εγγραφή χρηστών** (username, email, password) με πραγματικό hashing (bcrypt) και JWT authentication
 - **Διαχείριση εργασιών** (τίτλος, περιγραφή, ημερομηνία λήξης, προτεραιότητα, κατάσταση, ανάθεση σε χρήστη)
 - **Ομαδικό chat σε πραγματικό χρόνο** μέσω Socket.io, ανάμεσα σε όλους τους συνδεδεμένους χρήστες
-- **Πραγματική βάση δεδομένων** (SQLite — αρχείο, χωρίς ανάγκη εξωτερικού server βάσης)
+- **Πραγματική βάση δεδομένων** (PostgreSQL, φιλοξενούμενη δωρεάν στο [Neon.tech](https://neon.tech))
 
 ---
 
@@ -33,7 +33,20 @@ taskapp/
 
 ---
 
-## 2. Τοπική εκτέλεση (στον υπολογιστή σου)
+## 2. Δημιουργία δωρεάν βάσης δεδομένων στο Neon
+
+1. Πήγαινε στο [neon.tech](https://neon.tech) και κάνε δωρεάν εγγραφή.
+2. Δημιούργησε ένα νέο project (π.χ. "taskflow").
+3. Στο dashboard του project, βρες την ενότητα **"Connection Details"** (ή "Connection string").
+4. Αντίγραψε το connection string — έχει τη μορφή:
+   ```
+   postgresql://user:password@ep-xxxx.region.aws.neon.tech/dbname?sslmode=require
+   ```
+   Αυτό θα το χρειαστείς στο επόμενο βήμα.
+
+Οι πίνακες της βάσης (users, tasks, messages) δημιουργούνται **αυτόματα** την πρώτη φορά που ξεκινά ο server — δεν χρειάζεται να τρέξεις SQL χειροκίνητα.
+
+## 3. Τοπική εκτέλεση (στον υπολογιστή σου) — προαιρετικό
 
 Χρειάζεσαι [Node.js](https://nodejs.org) (έκδοση 18 ή νεότερη).
 
@@ -41,7 +54,7 @@ taskapp/
 cd taskapp/backend
 npm install
 cp .env.example .env
-# Άνοιξε το .env και άλλαξε το JWT_SECRET σε κάτι τυχαίο/μοναδικό
+# Άνοιξε το .env, βάλε το DATABASE_URL από το Neon και άλλαξε το JWT_SECRET
 npm start
 ```
 
@@ -49,7 +62,6 @@ npm start
 
 - Ο **πρώτος** χρήστης που θα κάνει εγγραφή γίνεται αυτόματα `admin`.
 - Κάθε επόμενος χρήστης εγγράφεται σαν `member`.
-- Η βάση δεδομένων αποθηκεύεται αυτόματα στο `backend/data/app.db`.
 
 ---
 
@@ -69,24 +81,23 @@ npm start
 
 ## 4. Πώς να το ανεβάσεις online (deployment)
 
-Το SQLite είναι απλό αλλά χρειάζεται **persistent disk** (μόνιμο δίσκο) — όχι κάθε δωρεάν hosting το προσφέρει. Προτάσεις:
+Επειδή η βάση δεδομένων είναι πλέον στο Neon (εξωτερική, μόνιμη), **δεν χρειάζεται persistent disk** στο hosting — οπότε δουλεύει και στο δωρεάν πλάνο του Render.
 
-### Επιλογή Α: Render.com (πιο απλό)
+### Render.com (δωρεάν)
 1. Ανέβασε τον φάκελο `taskapp` σε ένα GitHub repository.
 2. Στο Render, δημιούργησε νέο **Web Service**, σύνδεσέ το με το repo.
 3. Root directory: `backend`
 4. Build command: `npm install`
 5. Start command: `npm start`
-6. Πρόσθεσε ένα **Persistent Disk** (π.χ. 1GB) mounted στο `/opt/render/project/src/data`, και όρισε `DB_PATH=/opt/render/project/src/data/app.db` στα environment variables.
-7. Όρισε επίσης `JWT_SECRET` σαν environment variable.
+6. Στα **Environment Variables** πρόσθεσε:
+   - `DATABASE_URL` = το connection string που πήρες από το Neon
+   - `JWT_SECRET` = μια τυχαία μεγάλη σειρά χαρακτήρων
+7. Πάτα **Create Web Service** και περίμενε το deploy.
 
-### Επιλογή Β: Railway.app
-Παρόμοια διαδικασία — Railway προσφέρει persistent volumes εύκολα από το dashboard.
+Δεν χρειάζεται καθόλου η ενότητα "Disks" — μπορείς να την προσπεράσεις εντελώς.
 
-### Επιλογή Γ: VPS (π.χ. DigitalOcean, Hetzner)
-Πλήρης έλεγχος: εγκαθιστάς Node.js, τρέχεις την εφαρμογή με `pm2` για να μένει ζωντανή, και βάζεις ένα reverse proxy (nginx) μπροστά με SSL (Let's Encrypt).
-
-Αν στο μέλλον μεγαλώσει η ομάδα και θες κάτι πιο "σοβαρό" από SQLite, μπορείς να αντικαταστήσεις το `better-sqlite3` με PostgreSQL χωρίς να αλλάξεις τη λογική των routes — μόνο το layer του `db/init.js`.
+### Εναλλακτικά: Railway.app ή VPS
+Η ίδια λογική ισχύει — αρκεί να δώσεις το `DATABASE_URL` και το `JWT_SECRET` σαν environment variables, όπου κι αν φιλοξενήσεις το backend.
 
 ---
 
