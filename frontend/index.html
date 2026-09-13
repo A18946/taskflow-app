@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TaskFlow — Οργάνωση & Ομαδικό Chat</title>
+<link rel="stylesheet" href="/css/style.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body>
+
+<!-- ===================== AUTH SCREEN ===================== -->
+<div id="auth-screen" class="screen">
+  <div class="auth-card">
+    <h1>TaskFlow</h1>
+    <p class="subtitle">Οργάνωση εργασιών &amp; ομαδικό chat</p>
+
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="login">Σύνδεση</button>
+      <button class="tab-btn" data-tab="register">Νέος χρήστης</button>
+    </div>
+
+    <form id="login-form" class="auth-form">
+      <label>Email</label>
+      <input type="email" id="login-email" required />
+      <label>Κωδικός</label>
+      <input type="password" id="login-password" required />
+      <button type="submit">Σύνδεση</button>
+      <p class="error" id="login-error"></p>
+    </form>
+
+    <form id="register-form" class="auth-form hidden">
+      <label>Όνομα χρήστη</label>
+      <input type="text" id="register-username" required />
+      <label>Email</label>
+      <input type="email" id="register-email" required />
+      <label>Κωδικός (τουλάχιστον 6 χαρακτήρες)</label>
+      <input type="password" id="register-password" required minlength="6" />
+      <button type="submit">Δημιουργία λογαριασμού</button>
+      <p class="error" id="register-error"></p>
+    </form>
+  </div>
+</div>
+
+<!-- ===================== MAIN APP ===================== -->
+<div id="app-screen" class="screen hidden">
+  <header class="topbar">
+    <div class="brand">TaskFlow</div>
+    <div class="user-info">
+      <span id="current-username"></span>
+      <button id="logout-btn">Αποσύνδεση</button>
+    </div>
+  </header>
+
+  <div class="main-layout">
+
+    <!-- ---------- TASKS / CALENDAR PANEL ---------- -->
+    <section class="tasks-panel">
+      <div class="panel-header">
+        <h2>Εργασίες</h2>
+        <button id="new-task-btn">+ Νέα εργασία</button>
+      </div>
+
+      <div class="filters">
+        <select id="filter-status">
+          <option value="">Όλες οι καταστάσεις</option>
+          <option value="pending">Εκκρεμεί</option>
+          <option value="in_progress">Σε εξέλιξη</option>
+          <option value="done">Ολοκληρώθηκε</option>
+        </select>
+        <select id="filter-assigned"></select>
+      </div>
+
+      <div id="task-list" class="task-list"></div>
+    </section>
+
+    <!-- ---------- CHAT PANEL ---------- -->
+    <section class="chat-panel">
+      <div class="panel-header">
+        <h2>Ομαδικό Chat</h2>
+      </div>
+      <div id="chat-messages" class="chat-messages"></div>
+      <form id="chat-form" class="chat-form">
+        <input type="text" id="chat-input" placeholder="Γράψε ένα μήνυμα..." autocomplete="off" />
+        <button type="submit">Αποστολή</button>
+      </form>
+    </section>
+
+  </div>
+</div>
+
+<!-- ---------- TASK MODAL ---------- -->
+<div id="task-modal" class="modal hidden">
+  <div class="modal-content">
+    <h3 id="task-modal-title">Νέα εργασία</h3>
+    <form id="task-form">
+      <input type="hidden" id="task-id" />
+      <label>Τίτλος</label>
+      <input type="text" id="task-title" required />
+      <label>Περιγραφή</label>
+      <textarea id="task-description"></textarea>
+      <label>Ημερομηνία λήξης</label>
+      <input type="date" id="task-due-date" />
+      <label>Ανάθεση σε</label>
+      <select id="task-assigned-to"></select>
+      <label>Προτεραιότητα</label>
+      <select id="task-priority">
+        <option value="low">Χαμηλή</option>
+        <option value="normal" selected>Κανονική</option>
+        <option value="high">Υψηλή</option>
+      </select>
+      <label>Κατάσταση</label>
+      <select id="task-status">
+        <option value="pending">Εκκρεμεί</option>
+        <option value="in_progress">Σε εξέλιξη</option>
+        <option value="done">Ολοκληρώθηκε</option>
+      </select>
+      <div class="modal-actions">
+        <button type="button" id="task-cancel-btn">Ακύρωση</button>
+        <button type="button" id="task-delete-btn" class="danger hidden">Διαγραφή</button>
+        <button type="submit">Αποθήκευση</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/app.js"></script>
+</body>
+</html>
